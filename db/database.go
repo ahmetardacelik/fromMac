@@ -1,4 +1,4 @@
-// database.go
+// db/database.go
 package db
 
 import (
@@ -7,7 +7,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func initializeDB() (*sql.DB, error) {
+func InitializeDB() (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", "./spotify_data.db")
 	if err != nil {
 		return nil, err

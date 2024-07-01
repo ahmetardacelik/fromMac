@@ -12,8 +12,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/ahmetardacelik/fromMac/db"
 	"github.com/ahmetardacelik/fromMac/spotify"
-	"github.com/ahmetardacelik/fromMac/db" // Import the db package
 	"golang.org/x/oauth2"
 )
 
@@ -171,7 +171,7 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	var err error
-	dbConn, err = db.InitializeDB() // Use db.InitializeDB to initialize the database
+	dbConn, err = db.InitializeDB()
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
