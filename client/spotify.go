@@ -13,7 +13,6 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// Client struct to hold OAuth2 config and access token
 type Client struct {
 	ClientID     string
 	ClientSecret string
@@ -21,23 +20,19 @@ type Client struct {
 	Client       *http.Client
 }
 
-// Initialize method to set up the Spotify client with the access token
 func (c *Client) Initialize(token *oauth2.Token) {
 	c.Token = token
 	c.Client = oauth2.NewClient(context.Background(), oauth2.StaticTokenSource(token))
 }
 
-// FetchTopArtists method to fetch top artists
 func (c *Client) FetchTopArtists() ([]byte, error) {
 	return c.makeRequest("https://api.spotify.com/v1/me/top/artists")
 }
 
-// FetchTopTracks method to fetch top tracks
 func (c *Client) FetchTopTracks() ([]byte, error) {
 	return c.makeRequest("https://api.spotify.com/v1/me/top/tracks")
 }
 
-// makeRequest method to make a request to Spotify API
 func (c *Client) makeRequest(url string) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -62,16 +57,14 @@ func (c *Client) makeRequest(url string) ([]byte, error) {
 		return nil, fmt.Errorf("error beautifying JSON response: %w", err)
 	}
 
-	// Print beautified JSON response to the console
 	fmt.Println("Beautified Response from Spotify:")
 	fmt.Println(prettyJSON.String())
 
 	return prettyJSON.Bytes(), nil
 }
 
-// Config for OAuth2 configuration
 var Config = &oauth2.Config{
-	ClientID:     os.Getenv("CLIENT_ID"), // Ensure these are set in your environment
+	ClientID:     os.Getenv("CLIENT_ID"),
 	ClientSecret: os.Getenv("CLIENT_SECRET"),
 	Scopes:       []string{"user-top-read"},
 	RedirectURL:  "http://localhost:8080/callback",

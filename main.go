@@ -2,12 +2,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 
-	"github.com/ahmetardacelik/SpotifyStats/spotify" // Adjust the import path as needed
+	"github.com/ahmetardacelik/fromMac/spotify" // Adjust the import path as needed
+	"golang.org/x/oauth2"
 )
 
 var spotifyClient spotify.Client
