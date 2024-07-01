@@ -1,4 +1,4 @@
-module spotify
+module github.com/ahmetardacelik/fromMac
 
 go 1.22.4
 
