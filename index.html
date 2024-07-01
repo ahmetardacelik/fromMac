@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Top Artists</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .artist {
+            margin-bottom: 20px;
+        }
+        .artist img {
+            height: 100px;
+            width: 100px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Spotify Top Artists</h1>
+    <div id="artists"></div>
+    <h2>Most Listened Genres</h2>
+    <div id="genres"></div>
+
+    <script>
+        async function fetchTopArtists() {
+            const response = await fetch('/top-artists');
+            const data = await response.json();
+            const artistsDiv = document.getElementById('artists');
+            const genresDiv = document.getElementById('genres');
+
+            data.artists.forEach(artist => {
+                const artistDiv = document.createElement('div');
+                artistDiv.className = 'artist';
+                artistDiv.innerHTML = `
+                    <img src="${artist.images[0].url}" alt="${artist.name}">
+                    <p><strong>${artist.name}</strong></p>
+                    <p>Genres: ${artist.genres.join(', ')}</p>
+                    <p>Followers: ${artist.followers.total}</p>
+                    <p>Popularity: ${artist.popularity}</p>
+                `;
+                artistsDiv.appendChild(artistDiv);
+            });
+
+            data.genres.forEach(genre => {
+                const genreDiv = document.createElement('div');
+                genreDiv.innerHTML = `
+                    <p>${genre.Name}: ${genre.Count}</p>
+                `;
+                genresDiv.appendChild(genreDiv);
+            });
+        }
+
+        fetchTopArtists();
+    </script>
+</body>
+</html>
