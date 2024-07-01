@@ -108,7 +108,7 @@ func periodicallyFetchData() {
 		}
 
 		// Sleep for an hour before fetching the data again
-		time.Sleep(1 * time.Minute)
+		time.Sleep(1 * time.Hour)
 	}
 }
 
