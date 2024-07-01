@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	spotifyClient spotify.Client
-	dbConn        *sql.DB
+	spotifyClient       spotify.Client
+	dbConn              *sql.DB
+	comparisonDbConn    *sql.DB
 )
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -43,14 +44,14 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/top-artists", http.StatusFound)
 }
 
-func insertData(artists []spotify.Artist) error {
+func insertData(artists []spotify.Artist, dbConn *sql.DB) error {
 	tx, err := dbConn.Begin()
 	if err != nil {
 		return err
 	}
 
 	for _, artist := range artists {
-		_, err = tx.Exec("INSERT OR REPLACE INTO artists (id, name, popularity, followers) VALUES (?, ?, ?, ?)",
+		_, err = tx.Exec("INSERT OR REPLACE INTO artists (id, name, popularity, followers, timestamp) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
 			artist.ID, artist.Name, artist.Popularity, artist.Followers.Total)
 		if err != nil {
 			tx.Rollback()
@@ -58,7 +59,7 @@ func insertData(artists []spotify.Artist) error {
 		}
 
 		for _, genre := range artist.Genres {
-			_, err = tx.Exec("INSERT INTO genres (artist_id, genre) VALUES (?, ?)",
+			_, err = tx.Exec("INSERT INTO genres (artist_id, genre, timestamp) VALUES (?, ?, CURRENT_TIMESTAMP)",
 				artist.ID, genre)
 			if err != nil {
 				tx.Rollback()
@@ -77,7 +78,7 @@ func topArtistsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = insertData(topArtists.Items)
+	err = insertData(topArtists.Items, dbConn)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -119,19 +120,30 @@ func topArtistsHandler(w http.ResponseWriter, r *http.Request) {
 
 func periodicallyFetchData() {
 	for {
+		if spotifyClient.Client == nil {
+			log.Println("Spotify client not initialized yet")
+			time.Sleep(1 * time.Minute)
+			continue
+		}
+
 		topArtists, err := spotifyClient.FetchTopArtistsWithParsing()
 		if err != nil {
 			log.Printf("Error fetching top artists: %v", err)
 			continue
 		}
 
-		err = insertData(topArtists.Items)
+		err = insertData(topArtists.Items, dbConn)
 		if err != nil {
-			log.Printf("Error inserting data: %v", err)
+			log.Printf("Error inserting data into main database: %v", err)
+		}
+
+		err = insertData(topArtists.Items, comparisonDbConn)
+		if err != nil {
+			log.Printf("Error inserting data into comparison database: %v", err)
 		}
 
 		// Sleep for an hour before fetching the data again
-		time.Sleep(1 * time.Hour)
+		time.Sleep(1 * time.Minute)
 	}
 }
 
@@ -165,6 +177,51 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Analysis complete. Check server logs for details."))
 }
 
+func fetchGenresData(dbConn *sql.DB) (map[string]int, error) {
+	rows, err := dbConn.Query("SELECT genre, COUNT(genre) as count FROM genres GROUP BY genre")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	genres := make(map[string]int)
+	for rows.Next() {
+		var genre string
+		var count int
+		err := rows.Scan(&genre, &count)
+		if err != nil {
+			return nil, err
+		}
+		genres[genre] = count
+	}
+	return genres, nil
+}
+
+func compareDataHandler(w http.ResponseWriter, r *http.Request) {
+	mainGenres, err := fetchGenresData(dbConn)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to fetch genres from main database: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	comparisonGenres, err := fetchGenresData(comparisonDbConn)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to fetch genres from comparison database: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		MainGenres       map[string]int `json:"main_genres"`
+		ComparisonGenres map[string]int `json:"comparison_genres"`
+	}{
+		MainGenres:       mainGenres,
+		ComparisonGenres: comparisonGenres,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 func serveIndex(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "index.html")
 }
@@ -176,6 +233,12 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer dbConn.Close()
+
+	comparisonDbConn, err = db.InitializeComparisonDB()
+	if err != nil {
+		log.Fatalf("Failed to initialize comparison database: %v", err)
+	}
+	defer comparisonDbConn.Close()
 
 	clientID := os.Getenv("CLIENT_ID")
 	clientSecret := os.Getenv("CLIENT_SECRET")
@@ -193,7 +256,54 @@ func main() {
 	http.HandleFunc("/top-artists", topArtistsHandler)
 	http.HandleFunc("/analyze", analyzeHandler)
 	http.HandleFunc("/", serveIndex)
+	http.HandleFunc("/fetch-data", fetchRecordedDataHandler)
+	http.HandleFunc("/compare-data", compareDataHandler) // New endpoint
 
 	fmt.Println("Server is running at http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+func fetchRecordedDataHandler(w http.ResponseWriter, r *http.Request) {
+	artists, err := fetchArtistsData(dbConn)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to fetch artists data: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	genres, err := fetchGenresData(dbConn)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to fetch genres data: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		Artists []spotify.Artist `json:"artists"`
+		Genres  map[string]int   `json:"genres"`
+	}{
+		Artists: artists,
+		Genres:  genres,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func fetchArtistsData(dbConn *sql.DB) ([]spotify.Artist, error) {
+	rows, err := dbConn.Query("SELECT id, name, popularity, followers, timestamp FROM artists")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var artists []spotify.Artist
+	for rows.Next() {
+		var artist spotify.Artist
+		var followers int
+		err := rows.Scan(&artist.ID, &artist.Name, &artist.Popularity, &followers)
+		if err != nil {
+			return nil, err
+		}
+		artist.Followers.Total = followers
+		artists = append(artists, artist)
+	}
+	return artists, nil
 }
