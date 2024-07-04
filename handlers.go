@@ -1,7 +1,7 @@
+// handlers.go
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,8 +13,7 @@ import (
 	"github.com/ahmetardacelik/fromMac/spotify"
 )
 
-// InsertData inserts artist data into the database
-func insertData(dbConn *sql.DB, artists []spotify.Artist) error {
+func insertData(artists []spotify.Artist) error {
 	tx, err := dbConn.Begin()
 	if err != nil {
 		return err
@@ -36,6 +35,21 @@ func insertData(dbConn *sql.DB, artists []spotify.Artist) error {
 				return err
 			}
 		}
+
+		// Fetch the current max rank for the user and increment it
+		var maxRank int
+		err = tx.QueryRow("SELECT COALESCE(MAX(rank), 0) + 1 FROM user_artists WHERE user_id = ?", spotifyClient.UserID).Scan(&maxRank)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+
+		_, err = tx.Exec("INSERT INTO user_artists (user_id, artist_id, rank, timestamp) VALUES (?, ?, ?, ?)",
+			spotifyClient.UserID, artist.ID, maxRank, time.Now())
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
 	}
 
 	return tx.Commit()
@@ -48,7 +62,7 @@ func topArtistsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = insertData(dbConn, topArtists.Items)
+	err = insertData(topArtists.Items)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -102,7 +116,7 @@ func periodicallyFetchData() {
 			continue
 		}
 
-		err = insertData(dbConn, topArtists.Items)
+		err = insertData(topArtists.Items)
 		if err != nil {
 			log.Printf("Error inserting data: %v", err)
 		}

@@ -36,7 +36,11 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	spotifyClient.Initialize(token)
+	err = spotifyClient.Initialize(dbConn, token)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to initialize Spotify client: %v", err), http.StatusInternalServerError)
+		return
+	}
 	http.Redirect(w, r, "/top-artists", http.StatusFound)
 }
 

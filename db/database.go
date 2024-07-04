@@ -1,3 +1,4 @@
+// db/db.go
 package db
 
 import (
@@ -14,22 +15,41 @@ func InitializeDB() (*sql.DB, error) {
 		return nil, err
 	}
 
+	createUsersTable := `
+	CREATE TABLE IF NOT EXISTS users (
+		id TEXT PRIMARY KEY,
+		username TEXT
+	);`
+
 	createArtistsTable := `
 	CREATE TABLE IF NOT EXISTS artists (
 		id TEXT PRIMARY KEY,
 		name TEXT,
 		popularity INTEGER,
-		followers INTEGER,
-		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+		followers INTEGER
 	);`
 
 	createGenresTable := `
 	CREATE TABLE IF NOT EXISTS genres (
 		artist_id TEXT,
 		genre TEXT,
-		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (artist_id) REFERENCES artists(id)
 	);`
+
+	createUserArtistsTable := `
+	CREATE TABLE IF NOT EXISTS user_artists (
+		user_id TEXT,
+		artist_id TEXT,
+		rank INTEGER,
+		timestamp DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
+		FOREIGN KEY (user_id) REFERENCES users(id),
+		FOREIGN KEY (artist_id) REFERENCES artists(id)
+	);`
+
+	_, err = db.Exec(createUsersTable)
+	if err != nil {
+		return nil, err
+	}
 
 	_, err = db.Exec(createArtistsTable)
 	if err != nil {
@@ -41,35 +61,18 @@ func InitializeDB() (*sql.DB, error) {
 		return nil, err
 	}
 
+	_, err = db.Exec(createUserArtistsTable)
+	if err != nil {
+		return nil, err
+	}
+
 	return db, nil
 }
 
-// InsertData inserts artist data into the database
-func InsertData(dbConn *sql.DB, artists []spotify.Artist) error {
-	tx, err := dbConn.Begin()
-	if err != nil {
-		return err
-	}
-
-	for _, artist := range artists {
-		_, err = tx.Exec("INSERT OR REPLACE INTO artists (id, name, popularity, followers) VALUES (?, ?, ?, ?)",
-			artist.ID, artist.Name, artist.Popularity, artist.Followers.Total)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
-
-		for _, genre := range artist.Genres {
-			_, err = tx.Exec("INSERT INTO genres (artist_id, genre) VALUES (?, ?)",
-				artist.ID, genre)
-			if err != nil {
-				tx.Rollback()
-				return err
-			}
-		}
-	}
-
-	return tx.Commit()
+// InsertUser inserts a user into the users table
+func InsertUser(dbConn *sql.DB, userID, username string) error {
+	_, err := dbConn.Exec("INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)", userID, username)
+	return err
 }
 
 // FetchGenresData fetches genre data from the database
