@@ -1,17 +1,17 @@
-// spotify/spotify.go
 package spotify
 
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 
+	"github.com/ahmetardacelik/fromMac/db"
 	"golang.org/x/oauth2"
-	"database/sql"
 )
 
 type Client struct {

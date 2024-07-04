@@ -1,11 +1,10 @@
-// db/db.go
 package db
 
 import (
 	"database/sql"
+	"time"
 
-	_ "github.com/mattn/go-sqlite3" // Import the SQLite3 driver
-	"github.com/ahmetardacelik/fromMac/spotify"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // InitializeDB initializes the database and creates the necessary tables
@@ -41,9 +40,10 @@ func InitializeDB() (*sql.DB, error) {
 		user_id TEXT,
 		artist_id TEXT,
 		rank INTEGER,
-		timestamp DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
+		timestamp DATETIME,
 		FOREIGN KEY (user_id) REFERENCES users(id),
-		FOREIGN KEY (artist_id) REFERENCES artists(id)
+		FOREIGN KEY (artist_id) REFERENCES artists(id),
+		PRIMARY KEY (user_id, artist_id)
 	);`
 
 	_, err = db.Exec(createUsersTable)
@@ -75,6 +75,57 @@ func InsertUser(dbConn *sql.DB, userID, username string) error {
 	return err
 }
 
+// InsertData inserts artist data into the database with rank starting from 1 for each user
+func InsertData(dbConn *sql.DB, userID string, artists []Artist, genres [][]string) error {
+	tx, err := dbConn.Begin()
+	if err != nil {
+		return err
+	}
+
+	rank := 1
+	location, err := time.LoadLocation("Europe/Istanbul")
+	if err != nil {
+		return err
+	}
+	timestamp := time.Now().In(location).Format("2006-01-02 15:04:05")
+
+	for i, artist := range artists {
+		_, err = tx.Exec("INSERT OR REPLACE INTO artists (id, name, popularity, followers) VALUES (?, ?, ?, ?)",
+			artist.ID, artist.Name, artist.Popularity, artist.Followers)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+
+		for _, genre := range genres[i] {
+			_, err = tx.Exec("INSERT OR IGNORE INTO genres (artist_id, genre) VALUES (?, ?)",
+				artist.ID, genre)
+			if err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+
+		_, err = tx.Exec("INSERT OR REPLACE INTO user_artists (user_id, artist_id, rank, timestamp) VALUES (?, ?, ?, ?)",
+			userID, artist.ID, rank, timestamp)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+
+		rank++
+	}
+
+	return tx.Commit()
+}
+
+type Artist struct {
+	ID         string
+	Name       string
+	Popularity int
+	Followers  int
+}
+
 // FetchGenresData fetches genre data from the database
 func FetchGenresData(dbConn *sql.DB) (map[string]int, error) {
 	rows, err := dbConn.Query("SELECT genre, COUNT(genre) as count FROM genres GROUP BY genre")
@@ -97,22 +148,20 @@ func FetchGenresData(dbConn *sql.DB) (map[string]int, error) {
 }
 
 // FetchArtistsData fetches artist data from the database
-func FetchArtistsData(dbConn *sql.DB) ([]spotify.Artist, error) {
+func FetchArtistsData(dbConn *sql.DB) ([]Artist, error) {
 	rows, err := dbConn.Query("SELECT id, name, popularity, followers FROM artists")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var artists []spotify.Artist
+	var artists []Artist
 	for rows.Next() {
-		var artist spotify.Artist
-		var followers int
-		err := rows.Scan(&artist.ID, &artist.Name, &artist.Popularity, &followers)
+		var artist Artist
+		err := rows.Scan(&artist.ID, &artist.Name, &artist.Popularity, &artist.Followers)
 		if err != nil {
 			return nil, err
 		}
-		artist.Followers.Total = followers
 		artists = append(artists, artist)
 	}
 	return artists, nil

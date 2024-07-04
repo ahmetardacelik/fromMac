@@ -1,4 +1,3 @@
-// handlers.go
 package main
 
 import (
@@ -13,48 +12,6 @@ import (
 	"github.com/ahmetardacelik/fromMac/spotify"
 )
 
-func insertData(artists []spotify.Artist) error {
-	tx, err := dbConn.Begin()
-	if err != nil {
-		return err
-	}
-
-	for _, artist := range artists {
-		_, err = tx.Exec("INSERT OR REPLACE INTO artists (id, name, popularity, followers) VALUES (?, ?, ?, ?)",
-			artist.ID, artist.Name, artist.Popularity, artist.Followers.Total)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
-
-		for _, genre := range artist.Genres {
-			_, err = tx.Exec("INSERT INTO genres (artist_id, genre) VALUES (?, ?)",
-				artist.ID, genre)
-			if err != nil {
-				tx.Rollback()
-				return err
-			}
-		}
-
-		// Fetch the current max rank for the user and increment it
-		var maxRank int
-		err = tx.QueryRow("SELECT COALESCE(MAX(rank), 0) + 1 FROM user_artists WHERE user_id = ?", spotifyClient.UserID).Scan(&maxRank)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
-
-		_, err = tx.Exec("INSERT INTO user_artists (user_id, artist_id, rank, timestamp) VALUES (?, ?, ?, ?)",
-			spotifyClient.UserID, artist.ID, maxRank, time.Now())
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
-	}
-
-	return tx.Commit()
-}
-
 func topArtistsHandler(w http.ResponseWriter, r *http.Request) {
 	topArtists, err := spotifyClient.FetchTopArtistsWithParsing()
 	if err != nil {
@@ -62,7 +19,19 @@ func topArtistsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = insertData(topArtists.Items)
+	var artists []db.Artist
+	var genres [][]string
+	for _, artist := range topArtists.Items {
+		artists = append(artists, db.Artist{
+			ID:         artist.ID,
+			Name:       artist.Name,
+			Popularity: artist.Popularity,
+			Followers:  artist.Followers.Total,
+		})
+		genres = append(genres, artist.Genres)
+	}
+
+	err = db.InsertData(dbConn, spotifyClient.UserID, artists, genres)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -81,12 +50,12 @@ func topArtistsHandler(w http.ResponseWriter, r *http.Request) {
 		Name  string
 		Count int
 	}
-	var genres []genre
+	var genresSlice []genre
 	for name, count := range genreCount {
-		genres = append(genres, genre{Name: name, Count: count})
+		genresSlice = append(genresSlice, genre{Name: name, Count: count})
 	}
-	sort.Slice(genres, func(i, j int) bool {
-		return genres[i].Count > genres[j].Count
+	sort.Slice(genresSlice, func(i, j int) bool {
+		return genresSlice[i].Count > genresSlice[j].Count
 	})
 
 	// Create a response struct to send JSON data
@@ -95,7 +64,7 @@ func topArtistsHandler(w http.ResponseWriter, r *http.Request) {
 		Genres  []genre          `json:"genres"`
 	}{
 		Artists: topArtists.Items,
-		Genres:  genres,
+		Genres:  genresSlice,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -116,7 +85,19 @@ func periodicallyFetchData() {
 			continue
 		}
 
-		err = insertData(topArtists.Items)
+		var artists []db.Artist
+		var genres [][]string
+		for _, artist := range topArtists.Items {
+			artists = append(artists, db.Artist{
+				ID:         artist.ID,
+				Name:       artist.Name,
+				Popularity: artist.Popularity,
+				Followers:  artist.Followers.Total,
+			})
+			genres = append(genres, artist.Genres)
+		}
+
+		err = db.InsertData(dbConn, spotifyClient.UserID, artists, genres)
 		if err != nil {
 			log.Printf("Error inserting data: %v", err)
 		}
@@ -170,8 +151,8 @@ func fetchRecordedDataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := struct {
-		Artists []spotify.Artist `json:"artists"`
-		Genres  map[string]int   `json:"genres"`
+		Artists []db.Artist   `json:"artists"`
+		Genres  map[string]int `json:"genres"`
 	}{
 		Artists: artists,
 		Genres:  genres,
