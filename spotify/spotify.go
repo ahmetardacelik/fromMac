@@ -10,7 +10,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/ahmetardacelik/fromMac/db"
+
+	"github.com/ahmetardacelik/fromMac/models"
 	"golang.org/x/oauth2"
 )
 
@@ -22,6 +23,16 @@ type Client struct {
 	UserID       string
 	Username     string
 }
+type SpotifyService struct {
+	SpotifyRepository SpotifyRepository
+
+}
+type Handler struct {
+	SpotifyRepository SpotifyRepository
+	Client Client
+}
+
+
 
 func (c *Client) Initialize(dbConn *sql.DB, token *oauth2.Token) error {
 	c.Token = token
@@ -118,13 +129,13 @@ func (c *Client) makeRequest(url string) ([]byte, error) {
 	return prettyJSON.Bytes(), nil
 }
 
-func (c *Client) FetchTopArtistsWithParsing() (TopArtistsResponse, error) {
+func (c *Client) FetchTopArtistsWithParsing() (models.TopArtistsResponse, error) {
 	data, err := c.makeRequest("https://api.spotify.com/v1/me/top/artists")
 	if err != nil {
-		return TopArtistsResponse{}, err
+		return models.TopArtistsResponse{}, err
 	}
 
-	return UnmarshalTopArtists(data)
+	return models.UnmarshalTopArtists(data)
 }
 
 var Config = &oauth2.Config{

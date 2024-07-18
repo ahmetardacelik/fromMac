@@ -1,4 +1,4 @@
-package db
+package spotify
 
 import (
 	"database/sql"
@@ -6,6 +6,10 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 )
+type SpotifyRepository struct {
+	DB *sql.DB
+
+}
 
 // InitializeDB initializes the database and creates the necessary tables
 func InitializeDB() (*sql.DB, error) {

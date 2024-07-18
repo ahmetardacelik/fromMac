@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ahmetardacelik/fromMac/db"
+	"github.com/ahmetardacelik/fromMac/repository"
 	"github.com/ahmetardacelik/fromMac/spotify"
 )
 
@@ -19,10 +19,10 @@ func topArtistsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var artists []db.Artist
+	var artists []repository.Artist
 	var genres [][]string
 	for _, artist := range topArtists.Items {
-		artists = append(artists, db.Artist{
+		artists = append(artists, repository.Artist{
 			ID:         artist.ID,
 			Name:       artist.Name,
 			Popularity: artist.Popularity,
@@ -31,7 +31,7 @@ func topArtistsHandler(w http.ResponseWriter, r *http.Request) {
 		genres = append(genres, artist.Genres)
 	}
 
-	err = db.InsertData(dbConn, spotifyClient.UserID, artists, genres)
+	err = repository.InsertData(dbConn, spotifyClient.UserID, artists, genres)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -85,10 +85,10 @@ func periodicallyFetchData() {
 			continue
 		}
 
-		var artists []db.Artist
+		var artists []repository.Artist
 		var genres [][]string
 		for _, artist := range topArtists.Items {
-			artists = append(artists, db.Artist{
+			artists = append(artists, repository.Artist{
 				ID:         artist.ID,
 				Name:       artist.Name,
 				Popularity: artist.Popularity,
@@ -97,7 +97,7 @@ func periodicallyFetchData() {
 			genres = append(genres, artist.Genres)
 		}
 
-		err = db.InsertData(dbConn, spotifyClient.UserID, artists, genres)
+		err = repository.InsertData(dbConn, spotifyClient.UserID, artists, genres)
 		if err != nil {
 			log.Printf("Error inserting data: %v", err)
 		}
@@ -138,20 +138,20 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func fetchRecordedDataHandler(w http.ResponseWriter, r *http.Request) {
-	artists, err := db.FetchArtistsData(dbConn)
+	artists, err := repository.FetchArtistsData(dbConn)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to fetch artists data: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	genres, err := db.FetchGenresData(dbConn)
+	genres, err := repository.FetchGenresData(dbConn)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to fetch genres data: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	response := struct {
-		Artists []db.Artist   `json:"artists"`
+		Artists []repository.Artist   `json:"artists"`
 		Genres  map[string]int `json:"genres"`
 	}{
 		Artists: artists,
