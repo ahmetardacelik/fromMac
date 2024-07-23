@@ -1,4 +1,4 @@
-package spotify
+package repository
 
 import (
 	"database/sql"
@@ -6,10 +6,24 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
 type SpotifyRepository struct {
 	DB *sql.DB
-
 }
+
+type Repository interface {
+	InsertUser(userID, username string) error
+	InsertData(userID string, artists []Artist, genres [][]string) error
+}
+
+func NewSpotifyRepository(db *sql.DB) *SpotifyRepository {
+	return &SpotifyRepository{
+		DB: db,
+	}
+}
+
+// Ensure SpotifyRepository implements Repository
+var _ Repository = &SpotifyRepository{}
 
 // InitializeDB initializes the database and creates the necessary tables
 func InitializeDB() (*sql.DB, error) {
@@ -73,15 +87,13 @@ func InitializeDB() (*sql.DB, error) {
 	return db, nil
 }
 
-// InsertUser inserts a user into the users table
-func InsertUser(dbConn *sql.DB, userID, username string) error {
-	_, err := dbConn.Exec("INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)", userID, username)
+func (r *SpotifyRepository) InsertUser(userID, username string) error {
+	_, err := r.DB.Exec("INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)", userID, username)
 	return err
 }
 
-// InsertData inserts artist data into the database with rank starting from 1 for each user
-func InsertData(dbConn *sql.DB, userID string, artists []Artist, genres [][]string) error {
-	tx, err := dbConn.Begin()
+func (r *SpotifyRepository) InsertData(userID string, artists []Artist, genres [][]string) error {
+	tx, err := r.DB.Begin()
 	if err != nil {
 		return err
 	}
@@ -130,7 +142,6 @@ type Artist struct {
 	Followers  int
 }
 
-// FetchGenresData fetches genre data from the database
 func FetchGenresData(dbConn *sql.DB) (map[string]int, error) {
 	rows, err := dbConn.Query("SELECT genre, COUNT(genre) as count FROM genres GROUP BY genre")
 	if err != nil {
@@ -151,7 +162,6 @@ func FetchGenresData(dbConn *sql.DB) (map[string]int, error) {
 	return genres, nil
 }
 
-// FetchArtistsData fetches artist data from the database
 func FetchArtistsData(dbConn *sql.DB) ([]Artist, error) {
 	rows, err := dbConn.Query("SELECT id, name, popularity, followers FROM artists")
 	if err != nil {

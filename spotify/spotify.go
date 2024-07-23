@@ -3,15 +3,16 @@ package spotify
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
-
+	"time"
 
 	"github.com/ahmetardacelik/fromMac/models"
+	"github.com/ahmetardacelik/fromMac/repository"
 	"golang.org/x/oauth2"
 )
 
@@ -22,23 +23,23 @@ type Client struct {
 	Client       *http.Client
 	UserID       string
 	Username     string
+	Repository   repository.Repository
 }
+
 type SpotifyService struct {
-	SpotifyRepository SpotifyRepository
-
-}
-type Handler struct {
-	SpotifyRepository SpotifyRepository
-	Client Client
+	SpotifyRepository repository.Repository
 }
 
+func NewSpotifyService(repository repository.Repository) *SpotifyService {
+	return &SpotifyService{
+		SpotifyRepository: repository,
+	}
+}
 
-
-func (c *Client) Initialize(dbConn *sql.DB, token *oauth2.Token) error {
+func (c *Client) Initialize(token *oauth2.Token) error {
 	c.Token = token
 	c.Client = oauth2.NewClient(context.Background(), oauth2.StaticTokenSource(token))
 
-	// Fetch user profile
 	profile, err := c.fetchUserProfile()
 	if err != nil {
 		return err
@@ -46,8 +47,7 @@ func (c *Client) Initialize(dbConn *sql.DB, token *oauth2.Token) error {
 	c.UserID = profile.ID
 	c.Username = profile.DisplayName
 
-	// Insert user into the database
-	err = db.InsertUser(dbConn, c.UserID, c.Username)
+	err = c.Repository.InsertUser(c.UserID, c.Username)
 	if err != nil {
 		return err
 	}
@@ -147,4 +147,42 @@ var Config = &oauth2.Config{
 		AuthURL:  "https://accounts.spotify.com/authorize",
 		TokenURL: "https://accounts.spotify.com/api/token",
 	},
+}
+func convertToRepositoryArtist(artist models.Artist) repository.Artist {
+	return repository.Artist{
+		ID:         artist.ID,
+		Name:       artist.Name,
+		Popularity: artist.Popularity,
+		Followers:  artist.Followers.Total,
+	}
+}
+
+func (c *Client) PeriodicallyFetchData() {
+	for {
+		if c == nil {
+			log.Println("Spotify client not initialized yet")
+			time.Sleep(1 * time.Minute)
+			continue
+		}
+
+		topArtists, err := c.FetchTopArtistsWithParsing()
+		if err != nil {
+			log.Printf("Error fetching top artists: %v", err)
+			continue
+		}
+
+		var artists []repository.Artist
+		var genres [][]string
+		for _, artist := range topArtists.Items {
+			artists = append(artists, convertToRepositoryArtist(artist))
+			genres = append(genres, artist.Genres)
+		}
+
+		err = c.Repository.InsertData(c.UserID, artists, genres)
+		if err != nil {
+			log.Printf("Error inserting data: %v", err)
+		}
+
+		time.Sleep(1 * time.Hour)
+	}
 }
